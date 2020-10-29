@@ -30,7 +30,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-"""Keyboard input emulation module
+r"""Keyboard input emulation module
 
 Automate typing keys or individual key actions (viz. press and hold, release) to
 an active window by calling ``send_keys`` method.
@@ -120,11 +120,12 @@ if sys.platform != 'win32':
 else:
     import time
     import ctypes
+
     import win32api
     import six
 
-    from . import win32structures
-    from . import win32functions
+    from .windows import win32structures
+    from .windows import win32functions
 
     __all__ = ['KeySequenceError', 'send_keys']
 
@@ -507,7 +508,7 @@ else:
                 win32api.keybd_event(inp.ki.wVk, inp.ki.wScan, inp.ki.dwFlags)
 
 
-    class PauseAction(KeyAction):
+    class PauseAction(object):
 
         """Represents a pause action"""
 

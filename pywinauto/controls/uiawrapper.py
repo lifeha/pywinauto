@@ -40,13 +40,14 @@ import warnings
 import comtypes
 
 from .. import backend
+from .. import WindowNotFoundError  # noqa #E402
 from ..timings import Timings
-from ..base_wrapper import BaseWrapper
+from .win_base_wrapper import WinBaseWrapper
 from ..base_wrapper import BaseMeta
 
-from ..uia_defines import IUIA
-from .. import uia_defines as uia_defs
-from ..uia_element_info import UIAElementInfo, elements_from_uia_array
+from ..windows.uia_defines import IUIA
+from ..windows import uia_defines as uia_defs
+from ..windows.uia_element_info import UIAElementInfo, elements_from_uia_array
 
 # region PATTERNS
 AutomationElement = IUIA().ui_automation_client.IUIAutomationElement
@@ -152,19 +153,20 @@ class UiaMeta(BaseMeta):
     @staticmethod
     def find_wrapper(element):
         """Find the correct wrapper for this UIA element"""
-        # Set a general wrapper by default
-        wrapper_match = UIAWrapper
 
         # Check for a more specific wrapper in the registry
-        if element.control_type in UiaMeta.control_type_to_cls:
+        try:
             wrapper_match = UiaMeta.control_type_to_cls[element.control_type]
+        except KeyError:
+            # Set a general wrapper by default
+            wrapper_match = UIAWrapper
 
         return wrapper_match
 
 
 # =========================================================================
 @six.add_metaclass(UiaMeta)
-class UIAWrapper(BaseWrapper):
+class UIAWrapper(WinBaseWrapper):
 
     """
     Default wrapper for User Interface Automation (UIA) controls.
@@ -195,12 +197,7 @@ class UIAWrapper(BaseWrapper):
         If the handle is not valid then an InvalidWindowHandle error
         is raised.
         """
-        BaseWrapper.__init__(self, element_info, backend.registry.backends['uia'])
-
-    # ------------------------------------------------------------
-    def __hash__(self):
-        """Return a unique hash value based on the element's Runtime ID"""
-        return hash(self.element_info.runtime_id)
+        WinBaseWrapper.__init__(self, element_info, backend.registry.backends['uia'])
 
     # ------------------------------------------------------------
     @lazy_property
@@ -386,7 +383,7 @@ class UIAWrapper(BaseWrapper):
     #------------------------------------------------------------
     def automation_id(self):
         """Return the Automation ID of the control"""
-        return self.element_info.automation_id
+        return self.element_info.auto_id
 
     # -----------------------------------------------------------
     def is_keyboard_focusable(self):
@@ -427,6 +424,10 @@ class UIAWrapper(BaseWrapper):
         Only a control supporting Window pattern should answer.
         If it doesn't (menu shadows, tooltips,...), try to send "Esc" key
         """
+        if not self.is_visible() or \
+                not self.is_enabled():
+            return
+
         try:
             name = self.element_info.name
             control_type = self.element_info.control_type
@@ -437,7 +438,10 @@ class UIAWrapper(BaseWrapper):
             if name and control_type:
                 self.actions.log("Closed " + control_type.lower() + ' "' +  name + '"')
         except(uia_defs.NoPatternInterfaceError):
-            self.type_keys("{ESC}")
+            try:
+                self.type_keys("{ESC}")
+            except comtypes.COMError:
+                raise WindowNotFoundError
 
     # -----------------------------------------------------------
     def minimize(self):
@@ -670,7 +674,7 @@ class UIAWrapper(BaseWrapper):
             err_msg = u"unsupported {0} for item {1}".format(type(item), item)
             raise ValueError(err_msg)
 
-        list_ = self.children(title=title)
+        list_ = self.children(name=title)
         if item_index < len(list_):
             wrp = list_[item_index]
             wrp.iface_selection_item.Select()
@@ -795,6 +799,24 @@ class UIAWrapper(BaseWrapper):
         except (uia_defs.NoPatternInterfaceError):
             pass
         return texts
+
+    # -----------------------------------------------------------
+    def move_window(self, x=None, y=None, width=None, height=None):
+        """Move the window to the new coordinates
+        The method should be implemented explicitly by controls that
+        support this action. The most obvious is the Window control.
+        Otherwise the method throws AttributeError
+
+        * **x** Specifies the new left position of the window.
+          Defaults to the current left position of the window.
+        * **y** Specifies the new top position of the window.
+          Defaults to the current top position of the window.
+        * **width** Specifies the new width of the window. Defaults to the
+          current width of the window.
+        * **height** Specifies the new height of the window. Default to the
+          current height of the window.
+        """
+        raise AttributeError("This method is not supported for {0}".format(self))
 
 
 backend.register('uia', UIAElementInfo, UIAWrapper)
